@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>番茄鐘工作法</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Roboto+Mono:wght@500&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+        }
+        .timer-font {
+            font-family: 'Roboto Mono', monospace;
+        }
+        /* 自定義按鈕陰影效果，增加立體感 */
+        .btn-shadow {
+            box-shadow: 0 4px 0 rgba(0, 0, 0, 0.1);
+        }
+        .btn-shadow:active {
+            box-shadow: 0 2px 0 rgba(0, 0, 0, 0.1);
+            transform: translateY(2px);
+        }
+    </style>
+</head>
+<!-- Body 背景色會透過 JS 動態切換 -->
+<body id="body-bg" class="bg-red-400 transition-colors duration-500 ease-in-out text-white min-h-screen flex flex-col items-center justify-center selection:bg-black/20">
+
+    <div class="w-full max-w-md px-6">
+        
+        <!-- 標題區域 -->
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold tracking-wider flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+                </svg>
+                Pomodoro Focus
+            </h1>
+        </header>
+
+        <!-- 主容器 -->
+        <div class="bg-white/10 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-white/20">
+            
+            <!-- 模式切換標籤 -->
+            <div class="flex bg-black/10 rounded-full p-1 mb-10">
+                <button id="btn-focus" onclick="switchMode('focus')" class="flex-1 py-2 rounded-full text-sm font-bold transition-all bg-white text-red-500 shadow-sm">
+                    專注模式
+                </button>
+                <button id="btn-break" onclick="switchMode('break')" class="flex-1 py-2 rounded-full text-sm font-bold text-white/70 hover:bg-white/10 transition-all">
+                    休息模式
+                </button>
+            </div>
+
+            <!-- 計時器顯示 -->
+            <div class="text-center mb-10">
+                <div id="timer-display" class="timer-font text-8xl font-bold tracking-tight leading-none mb-4">
+                    25:00
+                </div>
+                <div id="status-text" class="text-lg font-medium opacity-90 tracking-wide">
+                    準備開始專注了嗎？
+                </div>
+            </div>
+
+            <!-- 控制按鈕區 -->
+            <div class="flex flex-col gap-4 items-center">
+                <!-- 開始/暫停按鈕 -->
+                <button id="btn-main" onclick="toggleTimer()" class="btn-shadow w-full py-4 rounded-2xl bg-white text-red-500 text-2xl font-bold uppercase tracking-widest hover:bg-gray-50 transition-colors">
+                    開始 START
+                </button>
+                
+                <!-- 重置按鈕 (圖標樣式) -->
+                <button onclick="resetTimer()" class="group flex items-center gap-2 px-6 py-3 rounded-xl text-white/80 hover:bg-white/20 transition-all mt-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 group-hover:-rotate-180 transition-transform duration-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span class="font-medium">重置 Timer</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 底部版權/說明 -->
+        <footer class="mt-8 text-center text-white/60 text-xs">
+            <p>Simple Pomodoro MVP by Gemini</p>
+        </footer>
+
+    </div>
+
+    <!-- 音效 (使用隱藏的 Audio 元素，這裡用 Web Audio API 生成，但保留結構以備不時之需) -->
+    
+    <script>
+        // --- 設定與變數 ---
+        const MODES = {
+            focus: {
+                time: 25 * 60,
+                colorClass: 'bg-red-400',
+                textClass: 'text-red-500',
+                label: '專注時間',
+                message: '保持專注，你做得到的！'
+            },
+            break: {
+                time: 5 * 60,
+                colorClass: 'bg-teal-400',
+                textClass: 'text-teal-500',
+                label: '休息時間',
+                message: '放鬆一下，喝口水吧。'
+            }
+        };
+
+        let currentMode = 'focus';
+        let timeLeft = MODES.focus.time;
+        let timerId = null;
+        let isRunning = false;
+
+        // --- DOM 元素 ---
+        const body = document.getElementById('body-bg');
+        const timerDisplay = document.getElementById('timer-display');
+        const statusText = document.getElementById('status-text');
+        const btnMain = document.getElementById('btn-main');
+        const btnFocus = document.getElementById('btn-focus');
+        const btnBreak = document.getElementById('btn-break');
+
+        // --- 核心功能函數 ---
+
+        // 1. 更新顯示 (時間 & 網頁標題)
+        function updateDisplay() {
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            // 更新頁面上的時間
+            timerDisplay.textContent = timeString;
+            
+            // 更新瀏覽器標題 (Notifications & Visual Cues)
+            const modeLabel = currentMode === 'focus' ? '專注' : '休息';
+            document.title = `(${timeString}) - ${modeLabel}中`;
+        }
+
+        // 2. 切換模式 (Work/Break Modes)
+        function switchMode(mode) {
+            // 如果已經是該模式，不動作
+            if (currentMode === mode && !isRunning && timeLeft === MODES[mode].time) return;
+
+            currentMode = mode;
+            pauseTimer(); // 切換模式時先暫停
+            timeLeft = MODES[mode].time; // 重置時間
+            
+            updateTheme(mode); // 更新顏色主題
+            updateDisplay();
+            
+            statusText.textContent = MODES[mode].message;
+            btnMain.textContent = '開始 START';
+        }
+
+        // 3. 更新主題樣式 (UI 互動)
+        function updateTheme(mode) {
+            // 更新背景色
+            body.className = body.className.replace(/bg-\w+-400/, MODES[mode].colorClass);
+            
+            // 更新按鈕文字顏色
+            btnMain.className = btnMain.className.replace(/text-\w+-500/, MODES[mode].textClass);
+
+            // 更新標籤頁樣式 (Tab Styles)
+            const activeClass = "bg-white shadow-sm opacity-100";
+            const inactiveClass = "text-white/70 hover:bg-white/10";
+            
+            // 先清除所有特定顏色文字
+            btnFocus.className = btnFocus.className.replace(/text-\w+-500/, '');
+            btnBreak.className = btnBreak.className.replace(/text-\w+-500/, '');
+
+            if (mode === 'focus') {
+                btnFocus.className = `flex-1 py-2 rounded-full text-sm font-bold transition-all ${activeClass} ${MODES.focus.textClass}`;
+                btnBreak.className = `flex-1 py-2 rounded-full text-sm font-bold transition-all ${inactiveClass}`;
+            } else {
+                btnBreak.className = `flex-1 py-2 rounded-full text-sm font-bold transition-all ${activeClass} ${MODES.break.textClass}`;
+                btnFocus.className = `flex-1 py-2 rounded-full text-sm font-bold transition-all ${inactiveClass}`;
+            }
+        }
+
+        // 4. 計時器控制 (Controllable Timer)
+        function toggleTimer() {
+            if (isRunning) {
+                pauseTimer();
+            } else {
+                startTimer();
+            }
+        }
+
+        function startTimer() {
+            if (isRunning) return;
+            
+            isRunning = true;
+            btnMain.textContent = '暫停 PAUSE';
+            statusText.textContent = currentMode === 'focus' ? '專注中...' : '休息中...';
+
+            timerId = setInterval(() => {
+                timeLeft--;
+                updateDisplay();
+
+                if (timeLeft <= 0) {
+                    handleTimerComplete();
+                }
+            }, 1000);
+        }
+
+        function pauseTimer() {
+            if (!isRunning) return;
+            
+            isRunning = false;
+            clearInterval(timerId);
+            btnMain.textContent = '繼續 RESUME';
+            statusText.textContent = '計時已暫停';
+            document.title = '番茄鐘 - 已暫停';
+        }
+
+        function resetTimer() {
+            pauseTimer();
+            timeLeft = MODES[currentMode].time;
+            updateDisplay();
+            btnMain.textContent = '開始 START';
+            statusText.textContent = MODES[currentMode].message;
+            document.title = '番茄鐘工作法';
+        }
+
+        function handleTimerComplete() {
+            pauseTimer();
+            timeLeft = 0;
+            updateDisplay();
+            playAlarmSound();
+            
+            statusText.textContent = '時間到！';
+            btnMain.textContent = '完成 DONE';
+            document.title = '時間到！';
+            
+            // 簡單的自動切換提示邏輯
+            setTimeout(() => {
+                if(confirm("時間到了！要切換模式嗎？")) {
+                    switchMode(currentMode === 'focus' ? 'break' : 'focus');
+                }
+            }, 500);
+        }
+
+        // 5. 音效生成 (Web Audio API - 無需外部檔案)
+        function playAlarmSound() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                
+                const ctx = new AudioContext();
+                const oscillator = ctx.createOscillator();
+                const gainNode = ctx.createGain();
+
+                oscillator.type = 'sine'; // 正弦波 (嗶---)
+                oscillator.frequency.setValueAtTime(880, ctx.currentTime); // A5 音高
+                oscillator.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.5); // 音高下降
+
+                gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(ctx.destination);
+
+                oscillator.start();
+                oscillator.stop(ctx.currentTime + 0.5);
+            } catch (e) {
+                console.error("Audio play failed", e);
+            }
+        }
+
+        // 初始化
+        updateDisplay();
+    </script>
+</body>
+</html>
